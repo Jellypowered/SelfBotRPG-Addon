@@ -1,8 +1,20 @@
 ## Interface: 30300
 ## Title: SelfBot RPG
-## Notes: Controls mod-selfbot-rpg gathering modes
+## Notes: Tabbed controls for mod-selfbot-rpg gathering modes
 ## Author: SelfBot RPG contributors
-## Version: 0.2.0
+## Version: 0.3.0
 ## SavedVariables: SelfBotRPGDB
-SelfBotRPG.lua
-SelfBotRPG_Minimap.lua
+
+SBRPG_Core.lua
+SBRPG_Data.lua
+SBRPG_Theme.lua
+SBRPG_UIHelpers.lua
+SBRPG_History.lua
+SBRPG_Protocol.lua
+SBRPG_Window.lua
+SBRPG_Minimap.lua
+SBRPG_Tab_Gathering.lua
+SBRPG_Tab_Material.lua
+SBRPG_Tab_Fishing.lua
+SBRPG_Tab_Settings.lua
+SBRPG_Tab_History.lua

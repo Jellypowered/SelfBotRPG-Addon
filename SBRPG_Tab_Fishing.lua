@@ -1,0 +1,32 @@
+-- Fishing tab: targeted fish and current-zone modes.
+SBRPG = SBRPG or {}
+SBRPG.RegisterTab("fishing","Fishing",3,function(panel)
+    local db=SelfBotRPGDB.Fishing;local D=SBRPG.Data
+    SBRPG.CreateSectionHeader(panel,"Fishing",-16)
+    local help=SBRPG.CreateLabel(panel,"Choose a fish target or fish the current zone. Pole, lure, pool, and catch handling remain server-controlled.",16,-44,650);help:SetTextColor(unpack(SBRPG.Theme.gray))
+    local search=SBRPG.CreateInput(panel,"Search fish name or item ID",16,-76,280,db.search or "",false,"Case-insensitive plain-text filtering of Fishing-family catalog rows.")
+    local selected=SBRPG.CreateLabel(panel,"No fish selected",330,-96,335);selected:SetJustifyH("RIGHT");selected:SetTextColor(unpack(SBRPG.Theme.goldLight))
+    local scroll,child=SBRPG.CreateScrollList(panel,16,-130,655,166,26);local rows={};local empty=SBRPG.CreateLabel(panel,"",26,-160,620);empty:SetTextColor(unpack(SBRPG.Theme.gray))
+    local function Select(item)db.selectedName=item.name;db.selectedItemId=item.itemId;selected:SetText(D.ItemLink(item.itemId,item.name));SBRPG.RequestMaterialSources(item);panel:RefreshList()end
+    function panel:RefreshList()
+        for _,row in ipairs(rows)do row:Hide()end;local data=D.FilterMaterials(search:GetText(),true,nil);empty:SetText(#data==0 and (D.CatalogComplete and "No fish match this filter." or "Fishing catalog is loading.")or"")
+        for index,item in ipairs(data)do local captured=item;local row=rows[index]
+            if not row then row=CreateFrame("Button",nil,child);row:SetSize(625,25);row.bg=row:CreateTexture(nil,"BACKGROUND");row.bg:SetAllPoints();row.bg:SetTexture("Interface\\Buttons\\WHITE8x8");row.icon=row:CreateTexture(nil,"ARTWORK");row.icon:SetSize(20,20);row.icon:SetPoint("LEFT",4,0);row.name=row:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");row.name:SetPoint("LEFT",row.icon,"RIGHT",7,0);row.meta=row:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");row.meta:SetPoint("RIGHT",-10,0);rows[index]=row end
+            row:ClearAllPoints();row:SetPoint("TOPLEFT",0,-(index-1)*26);row.icon:SetTexture(D.ItemIcon(item.itemId));row.name:SetText(D.ItemLink(item.itemId,item.name));local sources=D.SourceCounts[item.name];row.meta:SetText(sources and (sources.pending and "checking sources" or ((sources.total or 0).." sources"))or item.methods);local active=item.name==db.selectedName;row.bg:SetVertexColor(active and .22 or .08,active and .18 or .08,active and .07 or .10,active and .9 or .45);row:SetScript("OnClick",function()Select(captured)end);row:SetScript("OnEnter",function(self)SBRPG.ShowItemTooltip(self,captured,"Fishing target\nMethods: "..captured.methods)end);row:SetScript("OnLeave",function()GameTooltip:Hide()end);row:Show()
+        end;child:SetHeight(math.max(1,#data*26));local current=D.MaterialByName[db.selectedName or ""];if current and D.IsFishing(current)then selected:SetText(D.ItemLink(current.itemId,current.name))elseif db.selectedName and db.selectedName~=""then selected:SetText(db.selectedName.." (unavailable)")end
+    end
+    search:SetScript("OnTextChanged",function(self)db.search=self:GetText();panel:RefreshList()end)
+    local duration=SBRPG.CreateInput(panel,"Duration (minutes; 0 = unlimited)",16,-316,205,db.duration or "0",true,"Allowed range: 0–10080.")
+    local quantity=SBRPG.CreateInput(panel,"Target quantity (0 = unlimited)",240,-316,205,db.quantity or "0",true,"Used only for selected-fish mode.")
+    duration:SetScript("OnTextChanged",function(self)db.duration=self:GetText()end);quantity:SetScript("OnTextChanged",function(self)db.quantity=self:GetText()end)
+    local settings=SelfBotRPGDB.Settings;local pools=SBRPG.CreateCheck(panel,"Prioritize fishing pools",16,-365,tostring(settings.prioritizepools or "0")=="1","Prefer known fishing pools when available.");local open=SBRPG.CreateCheck(panel,"Open water only",250,-365,tostring(settings.openwateronly or "1")=="1","Use open water and do not route between pools.")
+    pools:SetScript("OnClick",function(self)if self:GetChecked()then open:SetChecked(false)end;settings.prioritizepools=self:GetChecked()and"1"or"0";settings.openwateronly=open:GetChecked()and"1"or"0"end);open:SetScript("OnClick",function(self)if self:GetChecked()then pools:SetChecked(false)end;settings.openwateronly=self:GetChecked()and"1"or"0";settings.prioritizepools=pools:GetChecked()and"1"or"0"end)
+    local function Values()local d,e=SBRPG.Number(duration:GetText(),0,10080,"Duration");if not d then return nil,nil,e end;local q,qe=SBRPG.Number(quantity:GetText(),0,999999,"Quantity");if not q then return nil,nil,qe end;return d,q end
+    local selectedStart=SBRPG.CreateButton(panel,"Fish Selected Target",170,480,-327,function()local d,q,e=Values();if not d then SBRPG.SetStatus("error",e,{category="errors"});return end;local row=D.MaterialByName[db.selectedName or ""];if not row or not D.IsFishing(row)then SBRPG.SetStatus("error","Select an available fish target.",{category="errors"});return end;if not SBRPG.State.bridgeReady then SBRPG.Connect();return end;SBRPG.Send("START_FISHING",{"fish",row.name,tostring(d),tostring(q),settings.prioritizepools or"0",settings.openwateronly or"1"})end)
+    local zoneStart=SBRPG.CreateButton(panel,"Fish Current Zone",170,480,-363,function()local d,_,e=Values();if not d then SBRPG.SetStatus("error",e,{category="errors"});return end;if not SBRPG.State.bridgeReady then SBRPG.Connect();return end;SBRPG.Send("START_FISHING",{"zone","current",tostring(d),"0",settings.prioritizepools or"0",settings.openwateronly or"1"})end)
+    SBRPG.Tooltip(selectedStart,"Fish selected target",function()return selectedStart.disabledReason or "Fish for the selected catalog item."end);SBRPG.Tooltip(zoneStart,"Fish current zone",function()return zoneStart.disabledReason or "Fish eligible catches in the current zone; target quantity is ignored."end)
+    function panel:OnCatalogUpdated()panel:RefreshList()end;function panel:OnSourcesUpdated()panel:RefreshList()end
+    function panel:OnCapabilitiesUpdated()local enabled=SBRPG.State.bridgeReady and SBRPG.HasCapability("START_FISHING");SBRPG.SetEnabled(selectedStart,enabled,"Server does not advertise START_FISHING.");SBRPG.SetEnabled(zoneStart,enabled,"Server does not advertise START_FISHING.")end
+    function panel:OnShowTab()panel:RefreshList();panel:OnCapabilitiesUpdated()end
+    panel:RefreshList();panel:OnCapabilitiesUpdated()
+end)

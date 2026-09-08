@@ -27,8 +27,7 @@ function SBRPG.CreateButton(parent,text,width,x,y,callback)
     local b=CreateFrame("Button",nil,parent,"UIPanelButtonTemplate");b:SetSize(width or 120,24);b:SetPoint("TOPLEFT",x,y);b:SetText(text);b:SetScript("OnClick",callback);return b
 end
 function SBRPG.SetEnabled(button,enabled,reason)
-    button.disabledReason=reason
-    if enabled then button:Enable();button:SetAlpha(1) else button:Disable();button:SetAlpha(.45) end
+    if enabled then button.disabledReason=nil;button:Enable();button:SetAlpha(1) else button.disabledReason=reason;button:Disable();button:SetAlpha(.45) end
 end
 function SBRPG.CreateCheck(parent,text,x,y,checked,tooltip)
     local c=CreateFrame("CheckButton",nil,parent,"UICheckButtonTemplate");c:SetPoint("TOPLEFT",x,y);c:SetChecked(checked and true or false)

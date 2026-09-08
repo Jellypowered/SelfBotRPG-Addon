@@ -12,6 +12,7 @@ frame:Hide()
 local title=frame:CreateFontString(nil,"OVERLAY","GameFontNormalLarge");title:SetPoint("TOPLEFT",18,-14);title:SetText("SelfBot RPG");title:SetTextColor(unpack(T.goldLight))
 local version=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");version:SetPoint("LEFT",title,"RIGHT",8,0);version:SetText("v"..SBRPG.Version);version:SetTextColor(unpack(T.dim))
 local close=CreateFrame("Button",nil,frame,"UIPanelCloseButton");close:SetPoint("TOPRIGHT",1,1)
+local tinyButton=SBRPG.CreateButton(frame,"Tiny Mode",86,0,0,function()SBRPG.SetTinyMode(true)end);tinyButton:ClearAllPoints();tinyButton:SetPoint("TOPRIGHT",close,"TOPLEFT",0,-2)
 local connection=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");connection:SetPoint("RIGHT",close,"LEFT",-8,0);connection:SetText("Disconnected")
 local dot=frame:CreateTexture(nil,"OVERLAY");dot:SetSize(8,8);dot:SetPoint("RIGHT",connection,"LEFT",-5,0);dot:SetTexture("Interface\\Buttons\\WHITE8x8")
 
@@ -24,13 +25,27 @@ local stop=SBRPG.CreateButton(frame,"Stop Current",120,582,-497,function()
     if not SBRPG.HasCapability("STOP") then SBRPG.SetStatus("warning","Stop is not supported by this server.",{category="protocol"});return end
     SBRPG.Send("STOP",{})
 end)
-stop:ClearAllPoints();stop:SetPoint("BOTTOMRIGHT",-18,14);SBRPG.Tooltip(stop,"Stop current activity",function()return stop.disabledReason or "Stop the active run and let the server restore normal playerbot strategies." end)
-SBRPG.StatusFooter=footer;SBRPG.StopButton=stop
+stop:ClearAllPoints();stop:SetPoint("BOTTOMRIGHT",-18,14);SBRPG.Tooltip(stop,"Stop current activity",function()return stop.disabledReason or "Stop the active run using the configured return-home behavior." end)
+local forceStop=SBRPG.CreateButton(frame,"Force Stop",105,0,0,function()
+    if not SBRPG.State.bridgeReady then SBRPG.Connect();return end
+    if not SBRPG.HasCapability("FORCE_STOP") then SBRPG.SetStatus("warning","Force Stop is not supported by this server.",{category="protocol"});return end
+    SBRPG.Send("FORCE_STOP",{})
+end)
+forceStop:ClearAllPoints();forceStop:SetPoint("RIGHT",stop,"LEFT",-7,0);SBRPG.Tooltip(forceStop,"Force stop all activity",function()return forceStop.disabledReason or "Immediately halt module activity without returning home." end)
+SBRPG.StatusFooter=footer;SBRPG.StopButton=stop;SBRPG.ForceStopButton=forceStop
+local tiny=CreateFrame("Frame","SelfBotRPGTinyFrame",UIParent);tiny:SetSize(330,116);if db.tinyX and db.tinyY then tiny:SetPoint("CENTER",UIParent,"BOTTOMLEFT",db.tinyX,db.tinyY) else tiny:SetPoint("CENTER",UIParent,"CENTER",0,0) end;tiny:SetFrameStrata("DIALOG");tiny:SetToplevel(true);tiny:SetMovable(true);tiny:EnableMouse(true);tiny:RegisterForDrag("LeftButton");SBRPG.ApplyBackdrop(tiny,false)
+local tinyTitleButton=CreateFrame("Button",nil,tiny);tinyTitleButton:SetPoint("TOPLEFT",8,-5);tinyTitleButton:SetPoint("TOPRIGHT",-8,-5);tinyTitleButton:SetHeight(24);local tinyTitle=tinyTitleButton:CreateFontString(nil,"OVERLAY","GameFontNormal");tinyTitle:SetAllPoints();tinyTitle:SetJustifyH("LEFT");tinyTitle:SetText("SBRPG Tiny Mode");tinyTitle:SetTextColor(unpack(T.goldLight));tinyTitleButton:SetScript("OnClick",function()SBRPG.SetTinyMode(false);frame:Show()end)
+local tinyText=tiny:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");tinyText:SetPoint("TOPLEFT",12,-32);tinyText:SetPoint("TOPRIGHT",-12,-32);tinyText:SetHeight(42);tinyText:SetJustifyH("LEFT");tinyText:SetJustifyV("TOP");tinyText:SetWordWrap(true)
+local tinyStop=SBRPG.CreateButton(tiny,"Force Stop",105,0,0,function()if SBRPG.State.bridgeReady and SBRPG.HasCapability("FORCE_STOP")then SBRPG.Send("FORCE_STOP",{})else SBRPG.SetStatus("warning","Force Stop is not supported by this server.",{category="protocol"})end end);tinyStop:ClearAllPoints();tinyStop:SetPoint("BOTTOMRIGHT",-12,10)
+tiny:SetScript("OnDragStart",function(self)self:StartMoving()end);tiny:SetScript("OnDragStop",function(self)self:StopMovingOrSizing();local x,y=self:GetCenter();local scale=UIParent:GetEffectiveScale() or 1;db.tinyX=x*scale;db.tinyY=y*scale end);tiny:Hide();SBRPG.TinyWindow=tiny
 
 function SBRPG.UpdateStatusUI()
     local ready=SBRPG.State.bridgeReady;connection:SetText(ready and "Connected" or "Disconnected");local c=ready and T.green or T.red;connection:SetTextColor(unpack(c));dot:SetVertexColor(unpack(c))
     local state=SBRPG.State.status or {kind="info",text="Waiting for status…"};footer:SetText(state.text);footer:SetTextColor(unpack(SBRPG.ColorForStatus(state.kind)))
+    tinyText:SetText(state.text);tinyText:SetTextColor(unpack(SBRPG.ColorForStatus(state.kind)))
     SBRPG.SetEnabled(stop,ready and SBRPG.HasCapability("STOP"),ready and "Server does not advertise STOP." or "Protocol is disconnected.")
+    SBRPG.SetEnabled(forceStop,ready and SBRPG.HasCapability("FORCE_STOP"),ready and "Server does not advertise FORCE_STOP." or "Protocol is disconnected.")
+    SBRPG.SetEnabled(tinyStop,ready and SBRPG.HasCapability("FORCE_STOP"),ready and "Server does not advertise FORCE_STOP." or "Protocol is disconnected.")
 end
 function SBRPG.NotifyTabs(method,...)
     for _,tab in pairs(SBRPG.Tabs) do if tab.panel and tab.panel[method] then tab.panel[method](tab.panel,...) end end
@@ -58,6 +73,18 @@ function SBRPG.SelectTab(id)
     local tab=SBRPG.Tabs[id];if not tab or tab.hidden then return end
     for _,entry in pairs(SBRPG.Tabs) do if entry.panel then entry.panel:Hide() end end
     SBRPG.ActiveTab=id;db.activeTab=id;tab.panel:Show();SBRPG.UpdateTabHighlights();if tab.panel.OnShowTab then tab.panel:OnShowTab() end
+end
+function SBRPG.SetTinyMode(enabled)
+    if enabled then
+        frame:Hide()
+        tiny:Show()
+        tiny:Raise()
+        SBRPG.SetStatus("info","Tiny Mode active. Click its title to reopen the main window.",{category="activity"})
+        SBRPG.UpdateStatusUI()
+    else
+        tiny:Hide()
+        frame:Show()
+    end
 end
 function SBRPG.ShowConfirm(message,callback)
     if not SBRPG.ConfirmFrame then

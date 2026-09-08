@@ -38,12 +38,33 @@ end
 function SBRPG.RefreshCapabilityControls() SBRPG.NotifyTabs("OnCapabilitiesUpdated",State.capabilities);if SBRPG.UpdateStatusUI then SBRPG.UpdateStatusUI() end end
 
 local function ParseCapabilities(parts)
-    State.bridgeReady=true;State.capabilities={}
-    for capability in string.gmatch(parts[5] or "","[^,]+") do State.capabilities[capability]=true end
-    SBRPG.SetStatus("success","Protocol connected.",{category="protocol"});SBRPG.RefreshCapabilityControls()
+    -- WotLK chat-addon framing can vary the placement of compatibility/status
+    -- fields. Locate the actual comma-separated list instead of assuming an
+    -- absolute index after the version/opcode fields.
+    local capabilityList=""
+    for index=3,#parts do
+        local field=tostring(parts[index] or "")
+        if string.find(field,",",1,true) then capabilityList=field;break end
+    end
+    if capabilityList=="" then capabilityList=tostring(parts[5] or "") end
+    if State.capabilityList==capabilityList and next(State.capabilities or {})~=nil then return end
+    State.bridgeReady=true;State.capabilities={};State.capabilityList=capabilityList
+    local count=0
+    for capability in string.gmatch(capabilityList,"[^,]+") do
+        capability=string.match(capability,"^%s*(.-)%s*$")
+        if capability~="" then State.capabilities[capability]=true;count=count+1 end
+    end
+    if count==0 then SBRPG.SetStatus("error","Server sent an empty capability list.",{category="protocol"}) else SBRPG.SetStatus("success","Protocol connected: "..count.." capabilities.",{category="protocol"}) end
+    SBRPG.RefreshCapabilityControls()
     if SBRPG.ApplySavedSettings then SBRPG.ApplySavedSettings() end
     if SBRPG.HasCapability("MATERIAL_CATALOG") then SBRPG.Send("MATERIAL_CATALOG",{}) end
     SBRPG.RequestStatus(true)
+end
+local function AddCapability(parts)
+    local capability=tostring(parts[4] or "")
+    if capability=="" then return end
+    State.bridgeReady=true;State.capabilities=State.capabilities or {};State.capabilities[capability]=true
+    SBRPG.RefreshCapabilityControls()
 end
 local function ParseCatalog(parts)
     local requestId,index,total,itemId,key,displayName,family,methods=unpack(parts,3);index=tonumber(index) or 0;total=tonumber(total) or 0
@@ -59,27 +80,34 @@ local function ParseStatus(parts)
     local active,phase,reason,profession,nodes,gathers,items,perMin,perSec,target,durationSec,remainingSec=unpack(parts,3)
     State.activity={mode="gathering",active=active=="1",phase=phase,reason=reason,profession=profession,nodes=nodes,gathers=gathers,items=items,perMin=perMin,perSec=perSec,target=target,duration=durationSec,remaining=remainingSec}
     if active~="1" then SBRPG.SetStatus("info","SelfBot RPG: "..((reason and reason~="") and reason or "idle"),{category="activity"});return end
-    local timer=(tonumber(durationSec) or 0)>0 and (" | "..FormatDuration(remainingSec).." left") or "";local why=(reason and reason~="") and (" — "..reason) or "";local targetText=(target and target~="0") and (" | target "..target) or ""
-    SBRPG.SetStatus("info",tostring(phase or "Farming")..why.." | "..tostring(profession or "")..": "..tostring(nodes or 0).." nodes | "..tostring(gathers or 0).." gathers / "..tostring(items or 0).." items | "..tostring(perMin or 0).."/min "..tostring(perSec or 0).."/sec"..timer..targetText,{category="activity"})
+    local timer=(tonumber(durationSec) or 0)>0 and (" | "..FormatDuration(remainingSec).." left") or "";local targetText=(target and target~="0") and (" | route "..target) or ""
+    local headline=(reason and reason~="") and reason or tostring(phase or "Farming")
+    SBRPG.SetStatus("info",headline.." | "..tostring(profession or "")..": "..tostring(nodes or 0).." nodes, "..tostring(gathers or 0).." gathers / "..tostring(items or 0).." items"..timer..targetText,{category="activity"})
 end
 local function ParseMaterialStatus(parts)
     local requestId,active,itemId,gathered,goal,kills,remaining,harvest,phase=unpack(parts,3)
+    local wasActive=State.material and State.material.active
     State.material={active=active=="1",itemId=tonumber(itemId) or 0,gathered=tonumber(gathered) or 0,goal=tonumber(goal) or 0,kills=tonumber(kills) or 0,remaining=tonumber(remaining) or 0,harvest=harvest,phase=phase}
-    if active~="1" then return end
+    if active~="1" then
+        if wasActive then SBRPG.SetStatus("success","Material run finished. | "..State.material.gathered.." items, "..State.material.kills.." kills",{category="activity"}) end
+        return
+    end
     local goalText=State.material.goal>0 and (" / "..State.material.goal) or ""
-    SBRPG.SetStatus("info","Material "..State.material.itemId..": "..State.material.gathered..goalText.." items | "..State.material.kills.." kills | "..FormatDuration(State.material.remaining).." remaining"..((phase and phase~="") and (" | "..phase) or ""),{category="activity"})
+    local headline=(phase and phase~="") and phase or "Material farming"
+    SBRPG.SetStatus("info",headline.." | "..State.material.gathered..goalText.." items, "..State.material.kills.." kills | "..FormatDuration(State.material.remaining).." remaining",{category="activity"})
 end
 local function HandleMessage(message)
     local parts=Split(message);if parts[1]~="1" then return end;local opcode=parts[2]
-    if opcode=="HELLO_ACK" then State.bridgeReady=true;SBRPG.SetStatus("success","Protocol connected; waiting for capabilities.",{category="protocol"})
+    if opcode=="HELLO_ACK" then if parts[5] and parts[5]~="" then ParseCapabilities(parts) else State.bridgeReady=true;SBRPG.SetStatus("success","Protocol connected; waiting for capabilities.",{category="protocol"}) end
     elseif opcode=="CAPABILITIES" then ParseCapabilities(parts)
+    elseif opcode=="CAPABILITY" then AddCapability(parts)
     elseif opcode=="MATERIAL_CATALOG" then ParseCatalog(parts)
     elseif opcode=="MATERIAL_SOURCE" then local requestId,index,total=unpack(parts,3);if tostring(requestId)==tostring(State.sourceRequest) then local s=Data.SourceCounts[State.sourceName] or {};s.received=(s.received or 0)+1;s.total=tonumber(total) or 0;s.pending=true;Data.SourceCounts[State.sourceName]=s end
     elseif opcode=="MATERIAL_SOURCES_END" then local requestId,total=unpack(parts,3);if tostring(requestId)==tostring(State.sourceRequest) then local s=Data.SourceCounts[State.sourceName] or {};s.total=tonumber(total) or s.total or 0;s.pending=false;Data.SourceCounts[State.sourceName]=s;SBRPG.NotifyTabs("OnSourcesUpdated",State.sourceName,s);if s.total==0 then SBRPG.SetStatus("warning",State.sourceName..": no indexed sources.",{category="activity"}) end end
     elseif opcode=="STATUS" then ParseStatus(parts)
     elseif opcode=="MATERIAL_STATUS" then ParseMaterialStatus(parts)
     elseif opcode=="SETTING" then local key,value=parts[3],parts[4];SelfBotRPGDB.Settings[key]=value;SBRPG.NotifyTabs("OnSettingUpdated",key,value);SBRPG.SetStatus("success","Applied "..tostring(key).." = "..tostring(value),{category="settings"})
-    elseif opcode=="ACK" then State.bridgeReady=true;SBRPG.SetStatus("success",parts[4] or "Command accepted.",{category="activity"});SBRPG.RequestStatus(true)
+    elseif opcode=="ACK" then State.bridgeReady=true;SBRPG.RequestStatus(true)
     elseif opcode=="ERROR" then SBRPG.SetStatus("error","Error: "..tostring(parts[4] or parts[3] or "unknown"),{category="errors"})
     elseif opcode=="DEBUG" then SBRPG.SetStatus("debug",parts[3] or "",{category="debug"}) end
     local pending=State.pending[tostring(parts[3] or "")];if pending then State.pending[tostring(parts[3])]=nil;pending.callback(opcode,parts) end

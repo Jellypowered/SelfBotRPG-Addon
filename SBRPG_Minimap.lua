@@ -1,14 +1,86 @@
--- Dependency-free persistent minimap launcher.
+-- Persistent minimap launcher via LibDBIcon, matching PBAltManager.
 SBRPG = SBRPG or {}
-local db=SelfBotRPGDB.Minimap
-local button=CreateFrame("Button","SelfBotRPGMinimapButton",Minimap);button:SetSize(32,32);button:SetMovable(true);button:EnableMouse(true);button:SetFrameStrata("MEDIUM");button:SetFrameLevel(Minimap:GetFrameLevel()+8);button:RegisterForClicks("LeftButtonUp","RightButtonUp");button:RegisterForDrag("LeftButton")
-local bg=button:CreateTexture(nil,"BACKGROUND");bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background");bg:SetSize(20,20);bg:SetPoint("CENTER",0,1)
-local icon=button:CreateTexture(nil,"ARTWORK");icon:SetTexture("Interface\\Icons\\INV_Pick_02");icon:SetSize(18,18);icon:SetPoint("CENTER",0,1);icon:SetTexCoord(.08,.92,.08,.92)
-local border=button:CreateTexture(nil,"OVERLAY");border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder");border:SetSize(54,54);border:SetPoint("TOPLEFT")
-local highlight=button:CreateTexture(nil,"HIGHLIGHT");highlight:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight");highlight:SetBlendMode("ADD");highlight:SetAllPoints()
-local function Place()local angle=math.rad(tonumber(db.angle) or 225);button:ClearAllPoints();button:SetPoint("CENTER",Minimap,"CENTER",math.cos(angle)*80,math.sin(angle)*80);if db.hidden then button:Hide() else button:Show() end end
-local moved=false;button:SetScript("OnMouseDown",function()moved=false end);button:SetScript("OnDragStart",function(self)moved=true;self:SetScript("OnUpdate",function()local mx,my=Minimap:GetCenter();local x,y=GetCursorPosition();local scale=Minimap:GetEffectiveScale();db.angle=math.deg(math.atan2(y/scale-my,x/scale-mx));Place()end)end);button:SetScript("OnDragStop",function(self)self:SetScript("OnUpdate",nil);Place()end)
-button:SetScript("OnClick",function(_,mouse)if moved then return end;if mouse=="RightButton" then SBRPG.ToggleWindow("settings") else SBRPG.ToggleWindow() end end)
-SBRPG.Tooltip(button,"SelfBot RPG",{"Left-click: toggle control window","Right-click: open Settings","Drag: reposition"})
-function SBRPG.SetMinimapHidden(hidden)db.hidden=hidden and true or false;Place()end
-Place()
+SelfBotRPGDB = SelfBotRPGDB or {}
+SelfBotRPGDB.Minimap = SelfBotRPGDB.Minimap or {}
+SelfBotRPGMinimapDB = SelfBotRPGMinimapDB or { hide = false, minimapPos = 225 }
+
+-- SelfBotRPGDB.Minimap is the table already used by the released addon and
+-- confirmed to contain the user's saved position. Keep it authoritative for
+-- LibDBIcon; the per-character table is only a compatibility mirror.
+local db = SelfBotRPGDB.Minimap
+if db.minimapPos == nil then db.minimapPos = tonumber(db.angle or SelfBotRPGDB.minimapPos or SelfBotRPGDB.minimapAngle) or 225 end
+if db.hidden == nil then db.hidden = false end
+
+local function SyncConfig()
+    db.minimapPos = tonumber(db.minimapPos) or 225
+    db.angle = db.minimapPos
+    db.hidden = db.hidden and true or false
+    SelfBotRPGMinimapDB.minimapPos = db.minimapPos
+    SelfBotRPGMinimapDB.hide = db.hidden
+end
+SyncConfig()
+
+local dbicon = LibStub("LibDBIcon-1.0", true)
+local ldb = LibStub("LibDataBroker-1.1", true)
+if not dbicon or not ldb then
+    if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("|cffff4444[SBRPG]|r LibDBIcon is unavailable; minimap launcher disabled.") end
+    return
+end
+
+local launcher = ldb:NewDataObject("SelfBotRPG", {
+    type = "launcher",
+    text = "SelfBot RPG",
+    icon = "Interface\\Icons\\INV_Pick_02",
+    OnClick = function(_, button)
+        if button == "RightButton" then SBRPG.ToggleWindow("settings") else SBRPG.ToggleWindow() end
+    end,
+    OnTooltipShow = function(tooltip)
+        tooltip:AddLine("|cffE6C45ASelfBot RPG|r")
+        tooltip:AddLine("Left-click: toggle control window", 1, 1, 1)
+        tooltip:AddLine("Right-click: open Settings", .7, .7, .7)
+        tooltip:AddLine("Drag: reposition", .7, .7, .7)
+    end,
+})
+dbicon:Register("SelfBotRPG", launcher, db)
+local iconButton = dbicon.objects and dbicon.objects["SelfBotRPG"]
+if iconButton and iconButton.HookScript then
+    iconButton:HookScript("OnDragStop", function()
+        -- LibDBIcon writes minimapPos during its OnUpdate. Copy it again at
+        -- the exact release boundary so logout cannot race the final update.
+        if iconButton.db and iconButton.db.minimapPos ~= nil then
+            db.minimapPos = tonumber(iconButton.db.minimapPos) or db.minimapPos
+            SyncConfig()
+        end
+    end)
+end
+
+function SBRPG.SetMinimapHidden(hidden)
+    db.hidden = hidden and true or false
+    SyncConfig()
+    if db.hidden then dbicon:Hide("SelfBotRPG") else dbicon:Show("SelfBotRPG") end
+    dbicon:Refresh("SelfBotRPG", db)
+end
+
+local syncFrame = CreateFrame("Frame")
+syncFrame:RegisterEvent("PLAYER_LOGIN")
+syncFrame:RegisterEvent("PLAYER_LOGOUT")
+syncFrame:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_LOGIN" then
+        db.minimapPos = tonumber(SelfBotRPGDB.Minimap.minimapPos) or db.minimapPos or 225
+        dbicon:Refresh("SelfBotRPG", db)
+    elseif event == "PLAYER_LOGOUT" then
+        if iconButton and iconButton.db and iconButton.db.minimapPos ~= nil then
+            db.minimapPos = tonumber(iconButton.db.minimapPos) or db.minimapPos
+        end
+    end
+    SyncConfig()
+end)
+
+-- LibDBIcon updates db.minimapPos during drag; mirror it to the account DB.
+local syncTicker = CreateFrame("Frame")
+syncTicker:SetScript("OnUpdate", function(self, elapsed)
+    self.t = (self.t or 0) + elapsed
+    if self.t < 0.5 then return end
+    self.t = 0
+    SyncConfig()
+end)

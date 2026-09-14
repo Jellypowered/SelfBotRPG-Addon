@@ -1,8 +1,10 @@
 # SelfBot RPG Addon
 
-A dependency-free WotLK 3.3.5a control panel for the server-side
+A self-contained WotLK 3.3.5a control panel for the server-side
 `mod-selfbot-rpg` module. It provides a dark, gold-accented tabbed UI for
 starting and observing supported gathering, material, and fishing activities.
+The required LibStub, LibDataBroker, CallbackHandler, and LibDBIcon libraries
+are bundled; no separate addon dependency is required.
 
 > The addon is a client control surface. The server module and stock playerbot
 > systems remain authoritative for movement, combat, gathering, loot, fishing,
@@ -15,11 +17,12 @@ starting and observing supported gathering, material, and fishing activities.
    ```text
    Interface/AddOns/SelfBotRPG
    ```
-3. Confirm `SelfBotRPG.toc` and the `SBRPG_*.lua` files are directly inside
-   that directory.
+3. Confirm `SelfBotRPG.toc`, the `SBRPG_*.lua` files, and the bundled `Libs/`
+   directory are directly inside that directory.
 4. Enable **SelfBot RPG** on the character-select addon screen and log in.
 
-No Ace3, PlayerbotManager, PBAltManager, or other addon dependency is needed.
+No Ace3, PlayerbotManager, PBAltManager, or separately installed library addon
+is needed.
 
 ## Use
 
@@ -29,7 +32,10 @@ No Ace3, PlayerbotManager, PBAltManager, or other addon dependency is needed.
   This is an emergency/manual fallback only; the UI normally uses addon
   messages.
 - **Minimap button:** left-click toggles the window; right-click opens
-  Settings; drag to reposition.
+  Settings; drag to reposition. LibDBIcon preserves its position and migrates
+  the previous launcher angle.
+- **Tiny mode:** **Stop Current** uses the configured graceful return-home
+  behavior; **Force Stop** immediately clears the activity when supported.
 
 The main window has five tabs. History is newest-first and keeps its latest row highlighted:
 
@@ -38,7 +44,7 @@ The main window has five tabs. History is newest-first and keeps its latest row 
 | Gathering | Select mining/herbalism node mode plus optional duration and exact-resource quantity goals. |
 | Material | Select one server-catalog material, inspect indexed-source count, and set duration/quantity goals. |
 | Fishing | Select a fish or fish the current zone, with pool/open-water options. |
-| Settings | Stage validated configuration, then Apply, Revert Unsaved, or Reset Defaults. |
+| Settings | Stage validated configuration, including separate controller, loot, gather, route-progress, and chest timeout values, then Apply, Revert Unsaved, or Reset Defaults. |
 | History | Read-only, persistent status history, capped at 100 newest entries. |
 
 Controls remain disabled until the server advertises their capability. This is
@@ -59,7 +65,10 @@ owns the addon protocol.
 
 ## Saved data and migration
 
-`SelfBotRPGDB` is account-wide. On first load this release migrates legacy:
+`SelfBotRPGDB` is account-wide. `SelfBotRPGMinimapDB` is a per-character
+compatibility mirror used by the bundled minimap library; the account-wide
+`SelfBotRPGDB.Minimap` table remains authoritative. On first load this release
+migrates legacy:
 
 - `Panel` position, gathering selection, material/fishing targets, and goals;
 - `minimapPos` / `minimapAngle`;
@@ -81,8 +90,9 @@ SBRPG_UIHelpers.lua  WotLK-safe widgets, tooltips, validation
 SBRPG_History.lua    bounded persistent status sink
 SBRPG_Protocol.lua   JLYRPG2 transport, parsing, capability gates
 SBRPG_Window.lua     main frame, tab registration, footer, confirmation dialog
-SBRPG_Minimap.lua    dependency-free minimap launcher
+SBRPG_Minimap.lua    LibDBIcon launcher, persistence and legacy migration
 SBRPG_Tab_*.lua      one module per initial tab
+Libs/                bundled LibStub, CallbackHandler, LDB and LibDBIcon
 ```
 
 Future Reputation and Questing tabs have no UI registration until server-side
@@ -107,7 +117,7 @@ capabilities and safety rules exist.
 Run from this directory:
 
 ```bash
-for file in *.lua; do luac -p "$file"; done
+find . -name '*.lua' -print0 | xargs -0 -n1 luac -p
 python3 tests/test_addon_layout.py
 git diff --check
 ```

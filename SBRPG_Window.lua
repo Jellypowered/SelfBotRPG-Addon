@@ -37,6 +37,7 @@ local tiny=CreateFrame("Frame","SelfBotRPGTinyFrame",UIParent);tiny:SetSize(330,
 local tinyTitleButton=CreateFrame("Button",nil,tiny);tinyTitleButton:SetPoint("TOPLEFT",8,-5);tinyTitleButton:SetPoint("TOPRIGHT",-8,-5);tinyTitleButton:SetHeight(24);local tinyTitle=tinyTitleButton:CreateFontString(nil,"OVERLAY","GameFontNormal");tinyTitle:SetAllPoints();tinyTitle:SetJustifyH("LEFT");tinyTitle:SetText("SBRPG Tiny Mode");tinyTitle:SetTextColor(unpack(T.goldLight));tinyTitleButton:SetScript("OnClick",function()SBRPG.SetTinyMode(false);frame:Show()end)
 local tinyText=tiny:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");tinyText:SetPoint("TOPLEFT",12,-32);tinyText:SetPoint("TOPRIGHT",-12,-32);tinyText:SetHeight(42);tinyText:SetJustifyH("LEFT");tinyText:SetJustifyV("TOP");tinyText:SetWordWrap(true)
 local tinyStop=SBRPG.CreateButton(tiny,"Force Stop",105,0,0,function()if SBRPG.State.bridgeReady and SBRPG.HasCapability("FORCE_STOP")then SBRPG.Send("FORCE_STOP",{})else SBRPG.SetStatus("warning","Force Stop is not supported by this server.",{category="protocol"})end end);tinyStop:ClearAllPoints();tinyStop:SetPoint("BOTTOMRIGHT",-12,10)
+local tinyCurrent=SBRPG.CreateButton(tiny,"Stop Current",120,0,0,function()if SBRPG.State.bridgeReady and SBRPG.HasCapability("STOP")then SBRPG.Send("STOP",{})else SBRPG.SetStatus("warning","Stop is not supported by this server.",{category="protocol"})end end);tinyCurrent:ClearAllPoints();tinyCurrent:SetPoint("RIGHT",tinyStop,"LEFT",-7,0);SBRPG.Tooltip(tinyCurrent,"Stop current activity","Stop the active run using the configured return-home behavior.")
 tiny:SetScript("OnDragStart",function(self)self:StartMoving()end);tiny:SetScript("OnDragStop",function(self)self:StopMovingOrSizing();local x,y=self:GetCenter();local scale=UIParent:GetEffectiveScale() or 1;db.tinyX=x*scale;db.tinyY=y*scale end);tiny:Hide();SBRPG.TinyWindow=tiny
 
 function SBRPG.UpdateStatusUI()
@@ -46,6 +47,7 @@ function SBRPG.UpdateStatusUI()
     SBRPG.SetEnabled(stop,ready and SBRPG.HasCapability("STOP"),ready and "Server does not advertise STOP." or "Protocol is disconnected.")
     SBRPG.SetEnabled(forceStop,ready and SBRPG.HasCapability("FORCE_STOP"),ready and "Server does not advertise FORCE_STOP." or "Protocol is disconnected.")
     SBRPG.SetEnabled(tinyStop,ready and SBRPG.HasCapability("FORCE_STOP"),ready and "Server does not advertise FORCE_STOP." or "Protocol is disconnected.")
+    SBRPG.SetEnabled(tinyCurrent,ready and SBRPG.HasCapability("STOP"),ready and "Server does not advertise STOP." or "Protocol is disconnected.")
 end
 function SBRPG.NotifyTabs(method,...)
     for _,tab in pairs(SBRPG.Tabs) do if tab.panel and tab.panel[method] then tab.panel[method](tab.panel,...) end end

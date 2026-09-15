@@ -48,7 +48,10 @@ The main window has five tabs. History is newest-first and keeps its latest row 
 | History | Read-only, persistent status history, capped at 100 newest entries. |
 
 Controls remain disabled until the server advertises their capability. This is
-intentional: an unavailable capability is not simulated by the addon.
+intentional: an unavailable capability is not simulated by the addon. Activity
+timing includes independent controls for exact loot handoff, gather claims,
+route progress, chest loot, material-hotspot dwell/empty cooldown, danger
+cooldown, and fishing-pool rediscovery.
 
 ## Server protocol
 

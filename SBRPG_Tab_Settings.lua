@@ -13,7 +13,23 @@ local definitions={
  {section="Material and bags"},{key="minchance",label="Minimum loot chance",kind="decimal",min=0,max=100,unit="%",tip="Minimum indexed chance for material sources."},{key="bagreserve",label="Reserved bag space",kind="number",min=0,max=100,unit="%",tip="Stop before consuming this percentage of bag capacity."},
  {section="Fishing"},{key="bobbers",label="Fishing bobber entries",kind="text",tip="Comma-separated gameobject entries recognized as fishing bobbers."},{key="uselures",label="Use fishing lures",kind="bool",tip="Use an available lure when practical; lures remain optional."},{key="prioritizepools",label="Prioritize pools",kind="bool",tip="Prefer known fishing pools."},{key="openwateronly",label="Open water only",kind="bool",tip="Avoid routing between fishing pools."},{key="searchdistance",label="Fishing search distance",kind="decimal",min=60,max=2000,unit="yards",tip="Bound water/pool discovery."},{key="castdistance",label="Fishing cast distance",kind="decimal",min=5,max=25,unit="yards",tip="Bound shoreline cast-position selection."},
 }
-for key,value in pairs(defaults)do if SelfBotRPGDB.Settings[key]==nil then SelfBotRPGDB.Settings[key]=value end end
+-- Apply server-sent config values first (received via SETTING frame on
+-- HELLO_ACK).  Only fall back to the addon defaults when the server has
+-- not yet sent a value.  Saved user edits (non-nil SelfBotRPGDB entries)
+-- are preserved: a server value is applied only when the user has not
+-- explicitly changed the addon setting.
+local _serverSynced = {}
+local function ApplyServerValue(key,value)
+ if not _serverSynced[key] then
+  _serverSynced[key]=true
+  -- Do not overwrite a user-edited value (one that differs from the addon
+  -- default at the time the user last pressed Apply).  For a fresh install
+  -- (still at addon default) accept the server's authoritative value.
+  if SelfBotRPGDB.Settings[key]==nil or SelfBotRPGDB.Settings[key]==defaults[key] then
+   SelfBotRPGDB.Settings[key]=value
+  end
+ end
+end
 local controls,staged={},{}
 local function LoadStaged(source)for key,value in pairs(source)do staged[key]=tostring(value)end end
 LoadStaged(SelfBotRPGDB.Settings)
@@ -48,7 +64,8 @@ SBRPG.RegisterTab("settings","Settings",4,function(panel)
  SBRPG.Tooltip(apply,"Apply settings",function()return apply.disabledReason or"Validate and send changed settings."end);SBRPG.Tooltip(revert,"Revert unsaved","Restore the last applied values.");SBRPG.Tooltip(reset,"Reset defaults","Stage documented defaults without sending them yet.")
  function panel:OnSettingUpdated(key,value)
   if not controls[key] then return end
-  SelfBotRPGDB.Settings[key]=value;staged[key]=value;SyncControls()
+  ApplyServerValue(key,value)
+  staged[key]=value;SyncControls()
  end
  function panel:OnCapabilitiesUpdated()
   SBRPG.SetEnabled(apply,SBRPG.State.bridgeReady and SBRPG.HasCapability("SET_CONFIG"),"Server does not advertise SET_CONFIG.")

@@ -1,24 +1,18 @@
 -- Persistent minimap launcher via LibDBIcon, matching PBAltManager.
 SBRPG = SBRPG or {}
-SelfBotRPGDB = SelfBotRPGDB or {}
-SelfBotRPGDB.Minimap = SelfBotRPGDB.Minimap or {}
+
+-- Define placeholder tables that will be overwritten or populated when data loads
+local db 
 SelfBotRPGMinimapDB = SelfBotRPGMinimapDB or { hide = false, minimapPos = 225 }
 
--- SelfBotRPGDB.Minimap is the table already used by the released addon and
--- confirmed to contain the user's saved position. Keep it authoritative for
--- LibDBIcon; the per-character table is only a compatibility mirror.
-local db = SelfBotRPGDB.Minimap
-if db.minimapPos == nil then db.minimapPos = tonumber(db.angle or SelfBotRPGDB.minimapPos or SelfBotRPGDB.minimapAngle) or 225 end
-if db.hidden == nil then db.hidden = false end
-
 local function SyncConfig()
+    if not db then return end -- Don't run until data is safely loaded
     db.minimapPos = tonumber(db.minimapPos) or 225
     db.angle = db.minimapPos
     db.hidden = db.hidden and true or false
     SelfBotRPGMinimapDB.minimapPos = db.minimapPos
     SelfBotRPGMinimapDB.hide = db.hidden
 end
-SyncConfig()
 
 local dbicon = LibStub("LibDBIcon-1.0", true)
 local ldb = LibStub("LibDataBroker-1.1", true)
@@ -41,20 +35,12 @@ local launcher = ldb:NewDataObject("SelfBotRPG", {
         tooltip:AddLine("Drag: reposition", .7, .7, .7)
     end,
 })
-dbicon:Register("SelfBotRPG", launcher, db)
-local iconButton = dbicon.objects and dbicon.objects["SelfBotRPG"]
-if iconButton and iconButton.HookScript then
-    iconButton:HookScript("OnDragStop", function()
-        -- LibDBIcon writes minimapPos during its OnUpdate. Copy it again at
-        -- the exact release boundary so logout cannot race the final update.
-        if iconButton.db and iconButton.db.minimapPos ~= nil then
-            db.minimapPos = tonumber(iconButton.db.minimapPos) or db.minimapPos
-            SyncConfig()
-        end
-    end)
-end
+
+-- We register the icon later inside PLAYER_LOGIN once the db reference is stable
+local iconButton
 
 function SBRPG.SetMinimapHidden(hidden)
+    if not db then return end
     db.hidden = hidden and true or false
     SyncConfig()
     if db.hidden then dbicon:Hide("SelfBotRPG") else dbicon:Show("SelfBotRPG") end
@@ -62,21 +48,53 @@ function SBRPG.SetMinimapHidden(hidden)
 end
 
 local syncFrame = CreateFrame("Frame")
+syncFrame:RegisterEvent("ADDON_LOADED")
 syncFrame:RegisterEvent("PLAYER_LOGIN")
 syncFrame:RegisterEvent("PLAYER_LOGOUT")
-syncFrame:SetScript("OnEvent", function(_, event)
-    if event == "PLAYER_LOGIN" then
-        db.minimapPos = tonumber(SelfBotRPGDB.Minimap.minimapPos) or db.minimapPos or 225
-        dbicon:Refresh("SelfBotRPG", db)
+
+syncFrame:SetScript("OnEvent", function(_, event, arg1)
+    -- 1. Safely anchor your data structure here
+    if event == "ADDON_LOADED" and arg1 == "SelfBotRPG" then 
+        -- Initialize missing sub-tables securely without wiping existing ones
+        SelfBotRPGDB = SelfBotRPGDB or {}
+        SelfBotRPGDB.Minimap = SelfBotRPGDB.Minimap or {}
+        
+        -- Now point db to the live, loaded SavedVariable table
+        db = SelfBotRPGDB.Minimap
+        
+        -- Run your initial migration checks safely on the actual loaded data
+        if db.minimapPos == nil then db.minimapPos = tonumber(db.angle or SelfBotRPGDB.minimapPos or SelfBotRPGDB.minimapAngle) or 225 end
+        if db.hidden == nil then db.hidden = false end
+        
+        SyncConfig()
+        
+    -- 2. Bind the active configuration table directly to LibDBIcon
+    elseif event == "PLAYER_LOGIN" then
+        if db then
+            dbicon:Register("SelfBotRPG", launcher, db)
+            iconButton = dbicon.objects and dbicon.objects["SelfBotRPG"]
+            
+            if iconButton and iconButton.HookScript then
+                iconButton:HookScript("OnDragStop", function()
+                    if iconButton.db and iconButton.db.minimapPos ~= nil then
+                        db.minimapPos = tonumber(iconButton.db.minimapPos) or db.minimapPos
+                        SyncConfig()
+                    end
+                end)
+            end
+            dbicon:Refresh("SelfBotRPG", db)
+        end
+        
+    -- 3. Save parameters gracefully on exit
     elseif event == "PLAYER_LOGOUT" then
-        if iconButton and iconButton.db and iconButton.db.minimapPos ~= nil then
+        if db and iconButton and iconButton.db and iconButton.db.minimapPos then
             db.minimapPos = tonumber(iconButton.db.minimapPos) or db.minimapPos
+            SyncConfig()
         end
     end
-    SyncConfig()
 end)
 
--- LibDBIcon updates db.minimapPos during drag; mirror it to the account DB.
+-- Mirror variables smoothly via background frames
 local syncTicker = CreateFrame("Frame")
 syncTicker:SetScript("OnUpdate", function(self, elapsed)
     self.t = (self.t or 0) + elapsed
@@ -84,3 +102,4 @@ syncTicker:SetScript("OnUpdate", function(self, elapsed)
     self.t = 0
     SyncConfig()
 end)
+

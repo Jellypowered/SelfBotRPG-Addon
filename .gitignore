@@ -1,1 +1,3 @@
 tests/test_addon_layout.py
+tests/*
+tests/

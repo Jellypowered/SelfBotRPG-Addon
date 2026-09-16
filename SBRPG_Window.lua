@@ -14,7 +14,8 @@ local version=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");ver
 local close=CreateFrame("Button",nil,frame,"UIPanelCloseButton");close:SetPoint("TOPRIGHT",1,1)
 local tinyButton=SBRPG.CreateButton(frame,"Tiny Mode",86,0,0,function()SBRPG.SetTinyMode(true)end);tinyButton:ClearAllPoints();tinyButton:SetPoint("TOPRIGHT",close,"TOPLEFT",0,-2)
 local connection=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");connection:SetPoint("RIGHT",close,"LEFT",-8,0);connection:SetText("Disconnected")
-local dot=frame:CreateTexture(nil,"OVERLAY");dot:SetSize(8,8);dot:SetPoint("RIGHT",connection,"LEFT",-5,0);dot:SetTexture("Interface\\Buttons\\WHITE8x8")
+local dot=frame:CreateTexture(nil,"OVERLAY");dot:SetSize(12,12);dot:SetPoint("RIGHT",connection,"LEFT",-7,0);dot:SetTexture("Interface\\Buttons\\WHITE8x8")
+local dotBorder=frame:CreateTexture(nil,"OVERLAY");dotBorder:SetSize(16,16);dotBorder:SetPoint("CENTER",dot);dotBorder:SetTexture("Interface\\Buttons\\WHITE8x8");dotBorder:SetVertexColor(0,0,0,.7)
 
 local tabBar=CreateFrame("Frame",nil,frame);tabBar:SetPoint("TOPLEFT",12,-42);tabBar:SetPoint("TOPRIGHT",-12,-42);tabBar:SetHeight(30)
 local content=CreateFrame("Frame",nil,frame);content:SetPoint("TOPLEFT",12,-72);content:SetPoint("BOTTOMRIGHT",-12,54);SBRPG.ApplyBackdrop(content,true)
@@ -38,6 +39,7 @@ local tinyTitleButton=CreateFrame("Button",nil,tiny);tinyTitleButton:SetPoint("T
 local tinyText=tiny:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");tinyText:SetPoint("TOPLEFT",12,-32);tinyText:SetPoint("TOPRIGHT",-12,-32);tinyText:SetHeight(42);tinyText:SetJustifyH("LEFT");tinyText:SetJustifyV("TOP");tinyText:SetWordWrap(true)
 local tinyStop=SBRPG.CreateButton(tiny,"Force Stop",105,0,0,function()if SBRPG.State.bridgeReady and SBRPG.HasCapability("FORCE_STOP")then SBRPG.Send("FORCE_STOP",{})else SBRPG.SetStatus("warning","Force Stop is not supported by this server.",{category="protocol"})end end);tinyStop:ClearAllPoints();tinyStop:SetPoint("BOTTOMRIGHT",-12,10)
 local tinyCurrent=SBRPG.CreateButton(tiny,"Stop Current",120,0,0,function()if SBRPG.State.bridgeReady and SBRPG.HasCapability("STOP")then SBRPG.Send("STOP",{})else SBRPG.SetStatus("warning","Stop is not supported by this server.",{category="protocol"})end end);tinyCurrent:ClearAllPoints();tinyCurrent:SetPoint("RIGHT",tinyStop,"LEFT",-7,0);SBRPG.Tooltip(tinyCurrent,"Stop current activity","Stop the active run using the configured return-home behavior.")
+local tinyClose=CreateFrame("Button",nil,tiny,"UIPanelCloseButton");tinyClose:SetPoint("TOPRIGHT",1,1)
 tiny:SetScript("OnDragStart",function(self)self:StartMoving()end);tiny:SetScript("OnDragStop",function(self)self:StopMovingOrSizing();local x,y=self:GetCenter();local scale=UIParent:GetEffectiveScale() or 1;db.tinyX=x*scale;db.tinyY=y*scale end);tiny:Hide();SBRPG.TinyWindow=tiny
 
 function SBRPG.UpdateStatusUI()
